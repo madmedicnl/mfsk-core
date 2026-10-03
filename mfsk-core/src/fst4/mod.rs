@@ -282,6 +282,148 @@ fst4_submode! {
     decode_fft1_size = 4_194_304,
 }
 
+// ────────────────────────────────────────────────────────────────────
+// FST4W — the beacon variant
+// ────────────────────────────────────────────────────────────────────
+
+/// Define an FST4W sub-mode ZST.
+///
+/// FST4W is the one-way beacon form of FST4: it shares FST4's frame
+/// (120 data + 40 sync = 160 symbols), sync blocks, Gray map, GFSK
+/// BT=2.0 and per-period geometry, but carries **WSPR's 50-bit message**
+/// (callsign + grid + power) under **LDPC(240, 74) + CRC-24** instead of
+/// FST4's 77-bit payload under LDPC(240, 101). WSJT-X selects it with
+/// `iwspr=1` in `genfst4.f90` / `fst4_decode.f90`.
+///
+/// Two consequences of that, both visible here:
+/// - **No `rvec` message scramble.** FST4 XORs its 77 bits with a fixed
+///   vector before CRC-24; FST4W does not (`genfst4.f90`'s `else` branch
+///   reads 50 bits straight from the packed message). So
+///   `INFO_SCRAMBLE_RVEC` stays at its `None` default.
+/// - **No a-priori (AP) decoding.** WSJT-X skips the AP passes for
+///   `iwspr=1` entirely; the beacon has no QSO state to hint from.
+macro_rules! fst4w_submode {
+    (
+        $(#[$attr:meta])*
+        $name:ident,
+        nsps = $nsps:literal,
+        ndown = $ndown:literal,
+        tr_period_s = $period:literal,
+        tx_start_offset_s = $tx_start:literal,
+        snr_calfac = $snr_calfac:literal,
+        decode_fft1_size = $fft1:literal,
+    ) => {
+        $(#[$attr])*
+        #[derive(Copy, Clone, Debug, Default)]
+        pub struct $name;
+
+        #[cfg(any(feature = "fft-rustfft", feature = "fft-extern"))]
+        impl $name {
+            /// `fst4_decode.f90`'s SNR calibration constant; FST4W shares
+            /// the geometry so the same value applies.
+            pub(crate) const SNR_CALFAC: f32 = $snr_calfac;
+        }
+
+        impl ModulationParams for $name {
+            const NTONES: u32 = 4;
+            const BITS_PER_SYMBOL: u32 = 2;
+            const NSPS: u32 = $nsps;
+            const SYMBOL_DT: f32 = ($nsps as f32) / 12_000.0;
+            const TONE_SPACING_HZ: f32 = 12_000.0 / ($nsps as f32);
+            const GRAY_MAP: &'static [u8] = &[0, 1, 3, 2];
+            const GFSK_BT: f32 = 2.0;
+            const GFSK_HMOD: f32 = 1.0;
+            const NFFT_PER_SYMBOL_FACTOR: u32 = 2;
+            const NSTEP_PER_SYMBOL: u32 = 2;
+            const NDOWN: u32 = $ndown;
+            /// FST4W has **no** `rvec` scramble — the 50-bit message goes
+            /// straight to CRC-24 + LDPC(240, 74).
+            const INFO_SCRAMBLE_RVEC: Option<&'static [u8]> = None;
+            const LLR_NSYM_MAX: u32 = 8;
+            const LLR_NSYM_MID: Option<u32> = Some(4);
+        }
+
+        impl FrameLayout for $name {
+            const N_DATA: u32 = 120;
+            const N_SYNC: u32 = 40; // 5 × 8
+            const N_SYMBOLS: u32 = 160;
+            const N_RAMP: u32 = 0;
+            const SYNC_MODE: SyncMode = SyncMode::Block(&FST4_SYNC_BLOCKS);
+            const T_SLOT_S: f32 = $period as f32;
+            const TX_START_OFFSET_S: f32 = $tx_start;
+        }
+
+        impl Protocol for $name {
+            /// LDPC(240, 74) + CRC-24 — see [`crate::fec::Ldpc240_74`].
+            type Fec = crate::fec::Ldpc240_74;
+            /// The 50-bit WSPR-style beacon message, CRC-24 checked.
+            type Msg = crate::msg::Fst4wMessage;
+            /// FST4W shares FST4's protocol identity for table purposes
+            /// (rig modes, band entries); the two are distinguished by
+            /// `Mode`/sub-mode, not by a separate `ProtocolId`.
+            const ID: ProtocolId = ProtocolId::Fst4;
+            const DECODE_FFT1_SIZE: u32 = $fft1;
+        }
+    };
+}
+
+fst4w_submode! {
+    /// FST4W-120: 120 s T/R period. Shares FST4-120's `nsps=8200` /
+    /// `ndown=205` (`fst4_decode.f90`), but beacons its 50-bit payload.
+    Fst4W120,
+    nsps = 8_200,
+    ndown = 205,
+    tr_period_s = 120,
+    tx_start_offset_s = 1.0,
+    snr_calfac = 390.0,
+    decode_fft1_size = 1_443_200,
+}
+
+fst4w_submode! {
+    /// FST4W-300: 300 s T/R period. Shares FST4-300's `nsps=21504` /
+    /// `ndown=512`.
+    Fst4W300,
+    nsps = 21_504,
+    ndown = 512,
+    tr_period_s = 300,
+    tx_start_offset_s = 1.0,
+    snr_calfac = 340.0,
+    decode_fft1_size = 4_194_304,
+}
+
+// FST4W-900 and FST4W-1800 are the long beacon periods. FST4 itself
+// does not wire 900/1800 (`fst4_decode.f90` has the branches, but no
+// `Fst4s900`/`Fst4s1800` exists in this crate), so their geometry is
+// taken directly from WSJT-X: `nsps=66560, ndown=1664` for 900 s and
+// `nsps=134400, ndown=3360` for 1800 s. `fft1_size` follows the FST4
+// convention `nmax` rounded up to a multiple of `ndown`, where
+// `nmax ≈ slot_seconds × 12000`.
+fst4w_submode! {
+    /// FST4W-900: 900 s (15 min) T/R period. New geometry — WSJT-X
+    /// `fst4_decode.f90` (`ntrperiod.eq.900`): `nsps=66560`,
+    /// `ndown=1664`.
+    Fst4W900,
+    nsps = 66_560,
+    ndown = 1_664,
+    tr_period_s = 900,
+    tx_start_offset_s = 1.0,
+    snr_calfac = 300.0,
+    decode_fft1_size = 11_059_200,
+}
+
+fst4w_submode! {
+    /// FST4W-1800: 1800 s (30 min) T/R period. New geometry — WSJT-X
+    /// `fst4_decode.f90` (`ntrperiod.eq.1800`): `nsps=134400`,
+    /// `ndown=3360`.
+    Fst4W1800,
+    nsps = 134_400,
+    ndown = 3_360,
+    tr_period_s = 1800,
+    tx_start_offset_s = 1.0,
+    snr_calfac = 280.0,
+    decode_fft1_size = 21_600_000,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

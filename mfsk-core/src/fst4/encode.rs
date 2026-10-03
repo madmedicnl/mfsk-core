@@ -112,6 +112,57 @@ pub fn message_to_tones(message77: &[u8; 77]) -> Vec<u8> {
     crate::engine::tx::codeword_to_itone::<Fst4s60>(&cw)
 }
 
+/// FST4W-900 GFSK configuration: 12 kHz, 66560 samples/symbol, BT=2.0.
+/// FST4 has no 900-s sub-mode, so this is FST4W's own geometry (WSJT-X
+/// `fst4_decode.f90`'s `ntrperiod.eq.900`: `nsps=66560`).
+pub const FST4W_900_GFSK: GfskCfg = GfskCfg {
+    sample_rate: 12_000.0,
+    samples_per_symbol: 66_560,
+    bt: 2.0,
+    hmod: 1.0,
+    ramp_samples: 66_560 / 8,
+};
+
+/// FST4W-1800 GFSK configuration: 12 kHz, 134400 samples/symbol, BT=2.0.
+/// FST4W's own geometry (WSJT-X `ntrperiod.eq.1800`: `nsps=134400`).
+pub const FST4W_1800_GFSK: GfskCfg = GfskCfg {
+    sample_rate: 12_000.0,
+    samples_per_symbol: 134_400,
+    bt: 2.0,
+    hmod: 1.0,
+    ramp_samples: 134_400 / 8,
+};
+
+/// Append the 24-bit CRC to a 50-bit FST4W message, producing the 74
+/// info bits LDPC(240, 74) encodes.
+fn append_crc24_fst4w(message50: &[u8; 50]) -> [u8; 74] {
+    let mut info = [0u8; 74];
+    info[..50].copy_from_slice(message50);
+    let mut with_zero = [0u8; 74];
+    with_zero[..50].copy_from_slice(message50);
+    let crc = crate::fec::ldpc240_74::crc24(&with_zero);
+    for i in 0..24 {
+        info[50 + i] = ((crc >> (23 - i)) & 1) as u8;
+    }
+    info
+}
+
+/// Encode a 50-bit FST4W message into the 160-symbol tone sequence.
+///
+/// The FST4W sibling of [`message_to_tones`]. Differs in exactly the two
+/// ways `genfst4.f90`'s `iwspr=1` branch does: a **50-bit** payload (not
+/// 77) and **no `rvec` scramble** (FST4's `rvec` XOR is in the `else`
+/// branch only). The frame — sync blocks, Gray map, 120/40/160 layout —
+/// is FST4's, so this reuses [`crate::engine::tx::codeword_to_itone`]
+/// with the same `Fst4s60` frame geometry.
+pub fn message_to_tones_fst4w(message50: &[u8; 50]) -> Vec<u8> {
+    let info = append_crc24_fst4w(message50);
+    let codec = crate::fec::Ldpc240_74;
+    let mut cw = [0u8; 240];
+    codec.encode(&info, &mut cw);
+    crate::engine::tx::codeword_to_itone::<Fst4s60>(&cw)
+}
+
 /// Output sample count for one FST4 transmission at the geometry `cfg`
 /// describes — `N_SYMBOLS x samples_per_symbol`.
 ///

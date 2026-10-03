@@ -155,6 +155,48 @@ impl LdpcParams for Ldpc240_101Params {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// LDPC(240, 74) — FST4W
+// ────────────────────────────────────────────────────────────────────
+
+/// Parameters for the WSJT LDPC(240, 74) code (FST4W). The same 160-symbol
+/// FST4 frame, but a 50-bit payload + CRC-24 instead of 77 bits, so the
+/// code is lower-rate than FST4's (240, 101). Tables come from
+/// [`crate::fec::ldpc240_74::tables`].
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Ldpc240_74Params;
+
+impl sealed::Sealed for Ldpc240_74Params {}
+
+impl LdpcParams for Ldpc240_74Params {
+    const N: usize = 240;
+    const K: usize = 74;
+    const M: usize = 166;
+    // FST4W's parity rows carry 4 or 5 variable nodes (WSJT-X declares
+    // `Nm(5,M)`), one fewer than FST4's 6. MAX_ROW sizes the row array.
+    const MAX_ROW: usize = 5;
+
+    #[inline]
+    fn mn(bit: usize) -> [u8; 3] {
+        crate::fec::ldpc240_74::tables::MN[bit]
+    }
+
+    #[inline]
+    fn nm(check: usize, slot: usize) -> u8 {
+        crate::fec::ldpc240_74::tables::NM[check][slot]
+    }
+
+    #[inline]
+    fn nrw(check: usize) -> u8 {
+        crate::fec::ldpc240_74::tables::NRW[check]
+    }
+
+    #[inline]
+    fn gen_parity(row: usize, col: usize) -> u8 {
+        crate::fec::ldpc240_74::tables::GEN_PARITY[row][col]
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // LDPC(128, 90) — MSK144
 // ────────────────────────────────────────────────────────────────────
 

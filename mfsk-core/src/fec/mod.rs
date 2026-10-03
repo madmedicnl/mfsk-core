@@ -19,6 +19,7 @@
 pub mod conv;
 pub mod ldpc;
 pub mod ldpc240_101;
+pub mod ldpc240_74;
 pub mod ldpc_128_90;
 pub mod rs;
 
@@ -31,6 +32,7 @@ pub use conv::{ConvFano, ConvFano232};
 pub use ldpc::Ldpc174_91;
 pub use ldpc_128_90::Ldpc128_90;
 pub use ldpc240_101::Ldpc240_101;
+pub use ldpc240_74::Ldpc240_74;
 pub use rs::Rs63_12;
 
 // Re-export the FecCodec trait so callers can name it via [`crate::fec::FecCodec`]

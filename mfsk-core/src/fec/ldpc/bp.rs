@@ -253,8 +253,12 @@ pub fn bp_decode_generic_kind<P: LdpcParams>(
                         hard_errors += 1;
                     }
                 }
+                // Leading 77 info bits, zero-padded for codes whose K
+                // is shorter (FST4W's LDPC(240,74) has K=74) so this
+                // fixed-size convenience field is always well-formed.
                 let mut message77 = [0u8; 77];
-                message77.copy_from_slice(&decoded[..77]);
+                let take = decoded.len().min(77);
+                message77[..take].copy_from_slice(&decoded[..take]);
                 return Some(BpResult {
                     message77,
                     info: decoded,
@@ -530,8 +534,12 @@ pub fn bp_decode_generic_kind_with_scratch<P: LdpcParams>(
                         hard_errors += 1;
                     }
                 }
+                // Leading 77 info bits, zero-padded for codes whose K
+                // is shorter (FST4W's LDPC(240,74) has K=74) so this
+                // fixed-size convenience field is always well-formed.
                 let mut message77 = [0u8; 77];
-                message77.copy_from_slice(&decoded[..77]);
+                let take = decoded.len().min(77);
+                message77[..take].copy_from_slice(&decoded[..take]);
                 // Codeword is small (174 / 240 bytes); clone instead of
                 // moving so the scratch's `cw` Vec stays in the pool.
                 return Some(BpResult {
@@ -1187,8 +1195,12 @@ pub fn bp_decode_generic_nms_with_scratch<P: LdpcParams, T: LlrScalar>(
                         hard_errors += 1;
                     }
                 }
+                // Leading 77 info bits, zero-padded for codes whose K
+                // is shorter (FST4W's LDPC(240,74) has K=74) so this
+                // fixed-size convenience field is always well-formed.
                 let mut message77 = [0u8; 77];
-                message77.copy_from_slice(&decoded[..77]);
+                let take = decoded.len().min(77);
+                message77[..take].copy_from_slice(&decoded[..take]);
                 // Codeword is small (174 / 240 bytes); clone instead
                 // of moving so the scratch's `cw` Vec stays in the pool
                 // for the next call.

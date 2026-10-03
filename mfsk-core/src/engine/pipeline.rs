@@ -523,9 +523,12 @@ impl DecodeResult {
     /// this still returns a 77-bit slice, but its interpretation is
     /// uvpacket-specific (length code + bytes + CRC fragment).
     ///
-    /// Panics if `info` is shorter than 77 bits.
+    /// Returns a slice shorter than 77 when the protocol's `K` is smaller —
+    /// FST4W's LDPC(240, 74) carries only 74 info bits — rather than
+    /// panicking. The leading 77 are the message for every Wsjt77-family
+    /// protocol; a K<77 caller reads its own shorter payload.
     pub fn message77(&self) -> &[u8] {
-        &self.info[..77]
+        &self.info[..77.min(self.info.len())]
     }
 }
 

@@ -402,6 +402,47 @@ impl MessageCodec for Wspr50Message {
     }
 }
 
+/// FST4W's message codec: the same 50-bit payload as [`Wspr50Message`], but
+/// guarded by **CRC-24** rather than WSPR's convolutional FEC.
+///
+/// FST4W is the beacon variant of FST4: it carries WSPR's 50-bit types
+/// (callsign + grid + power) in the FST4 frame, protected by LDPC(240, 74)
+/// and a 24-bit CRC. This codec differs from [`Wspr50Message`] in exactly
+/// the two constants that make that true — `CRC_BITS = 24` and a
+/// `verify_info` that checks it over the 74 info bits — while reusing the
+/// same `pack`/`unpack` bodies. See [`crate::fec::ldpc240_74`].
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Fst4wMessage;
+
+impl MessageCodec for Fst4wMessage {
+    type Unpacked = WsprMessage;
+    const PAYLOAD_BITS: u32 = 50;
+    const CRC_BITS: u32 = 24;
+
+    fn pack(&self, fields: &MessageFields) -> Option<Vec<u8>> {
+        let call = fields.call1.as_deref()?;
+        let grid = fields.grid.as_deref()?;
+        let power = fields.report?; // re-using MessageFields.report for dBm
+        let bits = pack_type1(call, grid, power)?;
+        Some(bits.to_vec())
+    }
+
+    fn unpack(&self, payload: &[u8], _ctx: &DecodeContext) -> Option<Self::Unpacked> {
+        if payload.len() != 50 {
+            return None;
+        }
+        let mut buf = [0u8; 50];
+        buf.copy_from_slice(payload);
+        unpack(&buf)
+    }
+
+    /// FST4W's info word is 74 bits: the 50 message bits plus a 24-bit
+    /// CRC-24 ([`crate::fec::ldpc240_74::check_crc24`]).
+    fn verify_info(info: &[u8]) -> bool {
+        crate::fec::ldpc240_74::check_crc24(info)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

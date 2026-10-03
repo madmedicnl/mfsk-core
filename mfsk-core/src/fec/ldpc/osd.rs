@@ -1315,8 +1315,11 @@ fn osd_result_from_best(llr: &[f32; LDPC_N], best: OsdBest) -> Option<OsdResult>
             hard_errors += 1;
         }
     }
+    // Leading 77 info bits, zero-padded for codes with K < 77
+    // (FST4W's LDPC(240, 74)) so this fixed-size field is well-formed.
     let mut message77 = [0u8; 77];
-    message77.copy_from_slice(&decoded[..77]);
+    let take = decoded.len().min(77);
+    message77[..take].copy_from_slice(&decoded[..take]);
     Some(OsdResult {
         message77,
         info: decoded,
@@ -1874,8 +1877,11 @@ pub fn osd_decode_generic<P: LdpcParams>(
             hard_errors += 1;
         }
     }
+    // Leading 77 info bits, zero-padded for codes with K < 77
+    // (FST4W's LDPC(240, 74)) so this fixed-size field is well-formed.
     let mut message77 = [0u8; 77];
-    message77.copy_from_slice(&decoded[..77]);
+    let take = decoded.len().min(77);
+    message77[..take].copy_from_slice(&decoded[..take]);
     Some(OsdResult {
         message77,
         info: decoded.to_vec(),
@@ -2172,8 +2178,11 @@ pub fn osd_decode_npre_generic<P: LdpcParams>(
             hard_errors += 1;
         }
     }
+    // Leading 77 info bits, zero-padded for codes with K < 77
+    // (FST4W's LDPC(240, 74)) so this fixed-size field is well-formed.
     let mut message77 = [0u8; 77];
-    message77.copy_from_slice(&decoded[..77]);
+    let take = decoded.len().min(77);
+    message77[..take].copy_from_slice(&decoded[..take]);
     Some(OsdResult {
         message77,
         info: decoded.to_vec(),

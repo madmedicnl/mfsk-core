@@ -58,7 +58,7 @@ pub use jt72::{Jt72Codec, Jt72Message};
 pub use packet_bytes::PacketBytesMessage;
 #[cfg(feature = "q65")]
 pub use q65::Q65Message;
-pub use wspr::{Wspr50Message, WsprMessage};
+pub use wspr::{Fst4wMessage, Wspr50Message, WsprMessage};
 
 use alloc::format;
 use alloc::vec::Vec;
