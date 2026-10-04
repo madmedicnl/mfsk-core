@@ -722,8 +722,18 @@ mod fft_lpf {
         // the subtract loop has no `audio[j]` to touch), so clamping the
         // range is a complete substitute for the branch, not just a fast
         // path alongside it. Only non-empty near a slot's start/end.
-        let i_lo = (-signed_start).clamp(0, nframe as i64) as usize;
-        let i_hi = (audio.len() as i64 - signed_start).clamp(0, nframe as i64) as usize;
+        // The `camp`/subtract loops below index `cfilt` (length `nfft`) and
+        // `cref_re`/`cref_im` (length `nframe`), so the range must be bounded
+        // by the *smaller* of the two as well as by the frame. A slot shorter
+        // than the frame (`nfft < nframe`, as a receiver whose tap comes up
+        // mid-slot produces) with a decode whose `dt` puts `signed_start` below
+        // zero made `audio.len() - signed_start` exceed `nfft` and panic on
+        // `cfilt[i]` — see `subtract` bounds. Clamping to `nfft` keeps every
+        // index in range; the samples past `nfft` are not in the buffer to
+        // subtract from anyway.
+        let i_max = (nframe as i64).min(nfft as i64);
+        let i_lo = (-signed_start).clamp(0, i_max) as usize;
+        let i_hi = (audio.len() as i64 - signed_start).clamp(0, i_max) as usize;
 
         let mut cfilt = vec![Complex32::new(0.0, 0.0); nfft];
         for i in i_lo..i_hi {
@@ -744,9 +754,16 @@ mod fft_lpf {
         if endcorrection && lpf_half < nframe {
             let ec = end_correction(lpf_half);
             for (d, &factor) in ec.iter().enumerate() {
+                // `cfilt` is `nfft` long; the frame's end-correction reaches
+                // `nframe - 1 - d`, which only exists in the buffer when
+                // `nfft >= nframe`. A short slot (`nfft < nframe`) bounds both
+                // ends by the buffer instead.
+                if d >= nfft {
+                    break;
+                }
                 cfilt[d] *= factor;
                 let end_idx = nframe - 1 - d;
-                if end_idx != d {
+                if end_idx != d && end_idx < nfft {
                     cfilt[end_idx] *= factor;
                 }
             }
@@ -1097,6 +1114,35 @@ mod tests {
              (drop only {drop_db:.1} dB; expected < -30 dB). \
              Pre-fix bug: `start as usize` saturated negative to 0."
         );
+    }
+
+    /// Regression test: a slot buffer *shorter* than the frame, decoded with a
+    /// negative `dt`, must not panic.
+    ///
+    /// The `camp`/subtract loops index `cfilt` (length `audio.len()`) and the
+    /// end-correction indexes `nframe - 1 - d`; with `audio.len() < nframe` and
+    /// `(base_offset_s + dt_sec) * sample_rate < 0`, `audio.len() - signed_start`
+    /// exceeded `nframe`, and the frame's own end reached past the buffer. A
+    /// receiver whose tap comes up mid-slot (a server attaching its radio after
+    /// the first slot began, say) produces exactly that — and the panic killed
+    /// the decode worker, so the station decoded nothing afterwards.
+    #[test]
+    fn subtract_tones_short_buffer_does_not_panic() {
+        let cfg = SubtractCfg {
+            sample_rate: 12_000.0,
+            tone_spacing_hz: 6.25,
+            samples_per_symbol: 1920,
+            base_offset_s: 0.5,
+            gfsk: None,
+        };
+        // A frame is 79 symbols; hand the subtract only 0.72 of it, as a
+        // half-caught slot does.
+        let tones: Vec<u8> = (0..79).map(|k| (k % 8) as u8).collect();
+        let mut audio: Vec<i16> = vec![0i16; 130_284];
+        // `signed_start` = (0.5 - 2.0) * 12 000 = -18 000: the frame begins
+        // before the buffer, so the near end clamps to 0 and the far end used
+        // to run past `audio.len()`.
+        subtract_tones_lpf(&mut audio, &tones, 1000.0, -2.0, &cfg, 200, true);
     }
 
     /// Sanity: positive DT path also works (regression check).
