@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **`engine::dsp::subtract`: the LPF subtract no longer panics on a slot buffer shorter than the frame (#567).** `apply_at_offset` sized
+  the FFT from `audio.len()`, where `subtractft8.f90` fixes `NFFT = NMAX = 15*12000` (v3.2.0-rc1, lines 10-11) — always at least
+  `NFRAME`, so a short `dd` is simply zero-filled. On a shorter buffer `cfilt` was shorter than `nframe`, and both the camp build
+  (`cfilt[i]`) and the end correction (`cfilt[nframe-1-d]`) indexed past its end. With end correction on — the FT8 subtract's own
+  setting — that panicked at *any* `dt`, not only a negative one, and on the `sic_early`/`__staged_sic` paths it takes the decode
+  worker thread down with it. `nfft` is now `audio.len().max(nframe)`, which restores the reference's invariant; the existing clamps
+  and the end correction are then correct as written, and a full slot is unaffected because `nfft` does not move. Bounding the loop
+  range by the buffer instead also stops the panic, but leaves the last `|signed_start|` samples with no subtraction at all (0.0 dB
+  residual where a full slot reaches −36.5 dB) and wraps the LPF on an FFT shorter than the frame. `residual_band_power` takes the
+  same `nfft` so the `sqf` trial search scores on the grid the subtract actually used. New test `subtract_short_buffer`.
+
 ## 0.11.0 — a new C ABI for every mode (breaking), FT4/FST4 a-priori decoding fixed (−1.1 dB AWGN), the sniper becomes FT8-only (breaking), a caller-supplied decode budget, `mfsk-ffi-ft8` retired, the CoreS3 FT8 receiver holds its slot grid and stops starving its own internal DRAM
 
 **Why a minor bump.** Two independent reasons, either of which would be
